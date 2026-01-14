@@ -315,3 +315,31 @@ jobs:
 
           $HUB_DETAILS
           EOF
+
+      # ------------------------------------------------------------
+      # Final status check
+      # ------------------------------------------------------------
+      - name: Final status check
+        shell: bash
+        run: |
+          case "${{ steps.policy-hub.outputs.registration_status }}" in
+            "success")
+              echo "✅ Workflow completed successfully - policy fully published"
+              ;;
+            "skipped")
+              echo "❌ Workflow failed - Policy Hub registration skipped due to missing credentials"
+              echo "The policy has been published to Git/Go modules but is NOT available in Policy Hub"
+              echo "Configure POLICY_HUB_URL and POLICY_HUB_TOKEN secrets and retry"
+              exit 1
+              ;;
+            "failed")
+              echo "❌ Workflow failed - Policy Hub registration failed"
+              echo "The policy has been published to Git/Go modules but Policy Hub registration failed"
+              echo "Use 'Complete Policy Registration' workflow to retry"
+              exit 1
+              ;;
+            *)
+              echo "❌ Workflow failed - unknown Policy Hub status"
+              exit 1
+              ;;
+          esac
