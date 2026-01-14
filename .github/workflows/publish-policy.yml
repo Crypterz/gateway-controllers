@@ -2,6 +2,8 @@ name: Publish Policy
 
 on:
   workflow_dispatch:
+    branches:
+      - main
     inputs:
       policy:
         description: "Policy folder name (e.g., ratelimit)"
@@ -21,9 +23,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    # ✅ Enforce main branch only
-    if: github.ref == 'refs/heads/main'
-
     steps:
       # ------------------------------------------------------------
       # Checkout
@@ -34,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------------
-      # Input validation
+      # Validate inputs
       # ------------------------------------------------------------
       - name: Validate inputs
         shell: bash
@@ -57,16 +56,22 @@ jobs:
           echo "✅ Inputs validated"
 
       # ------------------------------------------------------------
-      # Go setup
+      # Setup Go
       # ------------------------------------------------------------
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-          cache: false
+          cache: true
 
       # ------------------------------------------------------------
-      # Resolve version & paths
+      # Install jq
+      # ------------------------------------------------------------
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      # ------------------------------------------------------------
+      # Resolve module metadata
       # ------------------------------------------------------------
       - name: Resolve module metadata
         id: meta
@@ -92,10 +97,8 @@ jobs:
           echo "module_path=$MODULE_PATH" >> "$GITHUB_OUTPUT"
           echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
 
-          echo "✅ Metadata resolved"
-
       # ------------------------------------------------------------
-      # Policy structure validation
+      # Validate policy structure
       # ------------------------------------------------------------
       - name: Validate policy structure
         shell: bash
@@ -123,7 +126,7 @@ jobs:
           echo "✅ Policy structure valid"
 
       # ------------------------------------------------------------
-      # Tests
+      # Run tests
       # ------------------------------------------------------------
       - name: Run policy tests
         working-directory: ${{ steps.meta.outputs.target_dir }}
@@ -149,13 +152,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git tag -l | grep -qx "${{ steps.meta.outputs.tag_name }}" && {
+          git rev-parse "${{ steps.meta.outputs.tag_name }}" >/dev/null 2>&1 && {
             echo "❌ Tag already exists"
             exit 1
           } || echo "✅ Version is new"
 
       # ------------------------------------------------------------
-      # Create Git tag
+      # Create and push Git tag
       # ------------------------------------------------------------
       - name: Create and push tag
         shell: bash
@@ -170,8 +173,8 @@ jobs:
           git tag -a "${{ steps.meta.outputs.tag_name }}" \
             -m "Release ${{ github.event.inputs.policy }} v${{ github.event.inputs.version }}"
 
-          # Use GITHUB_TOKEN for authentication
-          git push "https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.git" "${{ steps.meta.outputs.tag_name }}"
+          git push "https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.git" \
+            "${{ steps.meta.outputs.tag_name }}"
 
       # ------------------------------------------------------------
       # Verify Go module resolution
@@ -196,7 +199,7 @@ jobs:
           exit 1
 
       # ------------------------------------------------------------
-      # Register Policy in Policy Hub (Non-blocking)
+      # Register Policy in Policy Hub (MANDATORY)
       # ------------------------------------------------------------
       - name: Register policy in Policy Hub
         id: policy-hub
@@ -207,13 +210,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "📝 Registering policy in Policy Hub..."
-
-          # Skip if Policy Hub credentials not configured
           if [[ -z "${POLICY_HUB_URL:-}" || -z "${POLICY_HUB_TOKEN:-}" ]]; then
-            echo "⚠️ Policy Hub credentials not configured - skipping registration"
+            echo "❌ Policy Hub credentials missing"
             echo "registration_status=skipped" >> "$GITHUB_OUTPUT"
-            echo "registration_message=Policy Hub credentials not configured" >> "$GITHUB_OUTPUT"
+            echo "registration_message=Missing POLICY_HUB_URL or POLICY_HUB_TOKEN" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -236,59 +236,48 @@ jobs:
               published_at: now | strftime("%Y-%m-%dT%H:%M:%SZ")
             }')
 
-          # Attempt registration with error handling
-          if HTTP_RESPONSE=$(curl -sSL -w "HTTPSTATUS:%{http_code}" \
+          RESPONSE=$(curl -sSL -w "HTTPSTATUS:%{http_code}" \
             -X POST "$POLICY_HUB_URL/policies/register" \
             -H "Authorization: Bearer $POLICY_HUB_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD" 2>&1); then
-            
-            HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -E 's/.*HTTPSTATUS:([0-9]{3})$/\1/')
-            RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]{3}$//')
-            
-            if [[ "$HTTP_STATUS" =~ ^(200|201)$ ]]; then
-              echo "✅ Policy registered successfully in Policy Hub"
-              echo "registration_status=success" >> "$GITHUB_OUTPUT"
-              echo "registration_message=Policy registered successfully" >> "$GITHUB_OUTPUT"
-            else
-              echo "❌ Policy Hub registration failed (HTTP $HTTP_STATUS)"
-              echo "Response: $RESPONSE_BODY"
-              echo "registration_status=failed" >> "$GITHUB_OUTPUT"
-              echo "registration_message=HTTP $HTTP_STATUS: $RESPONSE_BODY" >> "$GITHUB_OUTPUT"
-            fi
+            -d "$PAYLOAD")
+
+          STATUS=$(echo "$RESPONSE" | sed -E 's/.*HTTPSTATUS:([0-9]{3})$/\1/')
+          BODY=$(echo "$RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]{3}$//')
+
+          if [[ "$STATUS" =~ ^(200|201)$ ]]; then
+            echo "registration_status=success" >> "$GITHUB_OUTPUT"
+            echo "registration_message=Policy registered successfully" >> "$GITHUB_OUTPUT"
           else
-            echo "❌ Policy Hub registration failed - network/connection error"
-            echo "Error: $HTTP_RESPONSE"
             echo "registration_status=failed" >> "$GITHUB_OUTPUT"
-            echo "registration_message=Network error: $HTTP_RESPONSE" >> "$GITHUB_OUTPUT"
+            echo "registration_message=HTTP $STATUS: $BODY" >> "$GITHUB_OUTPUT"
           fi
 
       # ------------------------------------------------------------
-      # Summary
+      # Publish summary (Markdown)
       # ------------------------------------------------------------
       - name: Publish summary
         run: |
-          # Determine overall status and title
           case "${{ steps.policy-hub.outputs.registration_status }}" in
-            "success")
+            success)
               TITLE="🎉 Policy Published Successfully"
-              HUB_STATUS="✅ Policy Hub registered"
-              HUB_DETAILS=""
+              HUB="✅ Policy Hub registration successful"
+              ACTION=""
               ;;
-            "skipped")
-              TITLE="⚠️ Policy Published (Policy Hub Registration Skipped)"
-              HUB_STATUS="⚠️ Policy Hub registration skipped"
-              HUB_DETAILS="**Action Required:** Configure POLICY_HUB_URL and POLICY_HUB_TOKEN secrets to enable automatic registration"
+            skipped)
+              TITLE="❌ Policy Publish Failed"
+              HUB="❌ Policy Hub registration skipped"
+              ACTION="**Fix:** Configure \`POLICY_HUB_URL\` and \`POLICY_HUB_TOKEN\` secrets and re-run the workflow."
               ;;
-            "failed")
-              TITLE="⚠️ Policy Published (Policy Hub Registration Failed)"
-              HUB_STATUS="❌ Policy Hub registration failed"
-              HUB_DETAILS="**Action Required:** Use 'Complete Policy Registration' workflow to retry registration"
+            failed)
+              TITLE="❌ Policy Publish Failed"
+              HUB="❌ Policy Hub registration failed"
+              ACTION="**Fix:** Review Policy Hub error details above and retry."
               ;;
             *)
-              TITLE="⚠️ Policy Published (Policy Hub Status Unknown)"
-              HUB_STATUS="❓ Policy Hub status unknown"
-              HUB_DETAILS="**Action Required:** Verify Policy Hub registration status manually"
+              TITLE="❌ Policy Publish Failed"
+              HUB="❌ Unknown Policy Hub state"
+              ACTION="**Fix:** Inspect workflow logs."
               ;;
           esac
 
@@ -302,44 +291,28 @@ jobs:
           | Tag | \`${{ steps.meta.outputs.tag_name }}\` |
           | Go Module | \`${{ steps.meta.outputs.module_path }}\` |
 
-          ## Usage
-          \`\`\`bash
-          go get ${{ steps.meta.outputs.module_path }}@v${{ github.event.inputs.version }}
-          \`\`\`
-
           ## Status
           ✅ Tests passed  
-          ✅ Tag created  
-          ✅ Module verified  
-          $HUB_STATUS
+          ✅ Git tag created  
+          ✅ Go module verified  
+          $HUB
 
-          $HUB_DETAILS
+          $ACTION
           EOF
 
       # ------------------------------------------------------------
-      # Final status check
+      # Final status enforcement
       # ------------------------------------------------------------
       - name: Final status check
         shell: bash
         run: |
           case "${{ steps.policy-hub.outputs.registration_status }}" in
-            "success")
-              echo "✅ Workflow completed successfully - policy fully published"
-              ;;
-            "skipped")
-              echo "❌ Workflow failed - Policy Hub registration skipped due to missing credentials"
-              echo "The policy has been published to Git/Go modules but is NOT available in Policy Hub"
-              echo "Configure POLICY_HUB_URL and POLICY_HUB_TOKEN secrets and retry"
-              exit 1
-              ;;
-            "failed")
-              echo "❌ Workflow failed - Policy Hub registration failed"
-              echo "The policy has been published to Git/Go modules but Policy Hub registration failed"
-              echo "Use 'Complete Policy Registration' workflow to retry"
-              exit 1
+            success)
+              echo "✅ Workflow completed successfully"
+              exit 0
               ;;
             *)
-              echo "❌ Workflow failed - unknown Policy Hub status"
+              echo "❌ Workflow failed due to Policy Hub registration"
               exit 1
               ;;
           esac
