@@ -63,7 +63,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.23"
-          cache: true
+          cache: false
 
       # ------------------------------------------------------------
       # Resolve version & paths
@@ -268,28 +268,32 @@ jobs:
       # ------------------------------------------------------------
       - name: Publish summary
         run: |
-          # Determine Policy Hub status for summary
+          # Determine overall status and title
           case "${{ steps.policy-hub.outputs.registration_status }}" in
             "success")
+              TITLE="🎉 Policy Published Successfully"
               HUB_STATUS="✅ Policy Hub registered"
               HUB_DETAILS=""
               ;;
             "skipped")
+              TITLE="⚠️ Policy Published (Policy Hub Registration Skipped)"
               HUB_STATUS="⚠️ Policy Hub registration skipped"
-              HUB_DETAILS="Configure POLICY_HUB_URL and POLICY_HUB_TOKEN secrets to enable automatic registration"
+              HUB_DETAILS="**Action Required:** Configure POLICY_HUB_URL and POLICY_HUB_TOKEN secrets to enable automatic registration"
               ;;
             "failed")
+              TITLE="⚠️ Policy Published (Policy Hub Registration Failed)"
               HUB_STATUS="❌ Policy Hub registration failed"
-              HUB_DETAILS="Use 'Complete Policy Registration' workflow to retry registration"
+              HUB_DETAILS="**Action Required:** Use 'Complete Policy Registration' workflow to retry registration"
               ;;
             *)
+              TITLE="⚠️ Policy Published (Policy Hub Status Unknown)"
               HUB_STATUS="❓ Policy Hub status unknown"
-              HUB_DETAILS=""
+              HUB_DETAILS="**Action Required:** Verify Policy Hub registration status manually"
               ;;
           esac
 
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
-          # 🎉 Policy Published Successfully
+          # $TITLE
 
           | Item | Value |
           |------|------|
