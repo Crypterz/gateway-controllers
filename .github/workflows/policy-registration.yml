@@ -1,10 +1,10 @@
-name: Policy Registration
+name: Complete Policy Registration
 
 on:
   workflow_dispatch:
     inputs:
       policy:
-        description: "Policy folder name"
+        description: "Policy folder name (e.g., ratelimit)"
         required: true
         type: string
       version:
@@ -16,10 +16,10 @@ permissions:
   contents: read
 
 jobs:
-  register-policy:
-    name: Register Policy in Hub
+  complete-registration:
+    name: Complete Policy Hub Registration
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       # ------------------------------------------------------------
@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       # ------------------------------------------------------------
-      # Input validation
+      # Validate inputs
       # ------------------------------------------------------------
       - name: Validate inputs
         shell: bash
@@ -54,9 +54,9 @@ jobs:
           echo "✅ Inputs validated"
 
       # ------------------------------------------------------------
-      # Resolve metadata
+      # Resolve module metadata
       # ------------------------------------------------------------
-      - name: Resolve policy metadata
+      - name: Resolve module metadata
         id: meta
         shell: bash
         run: |
