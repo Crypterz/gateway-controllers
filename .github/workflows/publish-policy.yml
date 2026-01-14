@@ -14,8 +14,6 @@ on:
 
 permissions:
   contents: write
-  actions: read
-  workflows: write
 
 jobs:
   publish-policy:
@@ -161,6 +159,8 @@ jobs:
       # ------------------------------------------------------------
       - name: Create and push tag
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -170,7 +170,8 @@ jobs:
           git tag -a "${{ steps.meta.outputs.tag_name }}" \
             -m "Release ${{ github.event.inputs.policy }} v${{ github.event.inputs.version }}"
 
-          git push origin "${{ steps.meta.outputs.tag_name }}"
+          # Use GITHUB_TOKEN for authentication
+          git push "https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.git" "${{ steps.meta.outputs.tag_name }}"
 
       # ------------------------------------------------------------
       # Verify Go module resolution
