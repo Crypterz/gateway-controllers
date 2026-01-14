@@ -74,20 +74,28 @@ jobs:
     - name: Validate policy structure
       run: |
         POLICY_DIR="policies/${{ github.event.inputs.policy }}"
-        MAJOR_VERSION_DIR="$POLICY_DIR/v${{ steps.version-validation.outputs.major }}"
+        MAJOR="${{ steps.version-validation.outputs.major }}"
         
-        if [ ! -d "$MAJOR_VERSION_DIR" ]; then
-          echo "❌ Policy v${{ steps.version-validation.outputs.major }} directory does not exist"
+        # For major version 1, files are at root level
+        # For major version 2+, files are in v<major>/ subdirectory
+        if [ "$MAJOR" = "1" ]; then
+          TARGET_DIR="$POLICY_DIR"
+        else
+          TARGET_DIR="$POLICY_DIR/v$MAJOR"
+        fi
+        
+        if [ ! -d "$TARGET_DIR" ]; then
+          echo "❌ Policy directory $TARGET_DIR does not exist"
           exit 1
         fi
         
-        if [ ! -f "$MAJOR_VERSION_DIR/go.mod" ]; then
-          echo "❌ go.mod not found in $MAJOR_VERSION_DIR"
+        if [ ! -f "$TARGET_DIR/go.mod" ]; then
+          echo "❌ go.mod not found in $TARGET_DIR"
           exit 1
         fi
         
-        if [ ! -f "$MAJOR_VERSION_DIR/policy-definition.yaml" ]; then
-          echo "❌ policy-definition.yaml not found in $MAJOR_VERSION_DIR"
+        if [ ! -f "$TARGET_DIR/policy-definition.yaml" ]; then
+          echo "❌ policy-definition.yaml not found in $TARGET_DIR"
           exit 1
         fi
         
@@ -95,10 +103,19 @@ jobs:
 
     - name: Run policy tests
       run: |
-        POLICY_DIR="policies/${{ github.event.inputs.policy }}/v${{ steps.version-validation.outputs.major }}"
+        POLICY_DIR="policies/${{ github.event.inputs.policy }}"
+        MAJOR="${{ steps.version-validation.outputs.major }}"
         
-        echo "Running tests in $POLICY_DIR"
-        cd "$POLICY_DIR"
+        # For major version 1, files are at root level
+        # For major version 2+, files are in v<major>/ subdirectory
+        if [ "$MAJOR" = "1" ]; then
+          TARGET_DIR="$POLICY_DIR"
+        else
+          TARGET_DIR="$POLICY_DIR/v$MAJOR"
+        fi
+        
+        echo "Running tests in $TARGET_DIR"
+        cd "$TARGET_DIR"
         
         if ! go test ./...; then
           echo "❌ Tests failed — release aborted"
@@ -132,7 +149,16 @@ jobs:
 
     - name: Verify Go module resolution
       run: |
-        MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v${{ steps.version-validation.outputs.major }}"
+        MAJOR="${{ steps.version-validation.outputs.major }}"
+        
+        # For major version 1, module path doesn't include version
+        # For major version 2+, module path includes /v<major>
+        if [ "$MAJOR" = "1" ]; then
+          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}"
+        else
+          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v$MAJOR"
+        fi
+        
         VERSION_TAG="${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
         
         echo "Testing module resolution: $MODULE_PATH@$VERSION_TAG"
@@ -151,6 +177,18 @@ jobs:
       run: |
         echo "📝 Registering policy in Policy Hub..."
         
+        MAJOR="${{ steps.version-validation.outputs.major }}"
+        
+        # For major version 1, module path doesn't include version
+        # For major version 2+, module path includes /v<major>
+        if [ "$MAJOR" = "1" ]; then
+          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}"
+          POLICY_DEF_PATH="policies/${{ github.event.inputs.policy }}/policy-definition.yaml"
+        else
+          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v$MAJOR"
+          POLICY_DEF_PATH="policies/${{ github.event.inputs.policy }}/v$MAJOR/policy-definition.yaml"
+        fi
+        
         # This is a placeholder for the actual Policy Hub API call
         # You would replace this with the actual API endpoint and authentication
         
@@ -158,9 +196,9 @@ jobs:
         {
           "policy": "${{ github.event.inputs.policy }}",
           "version": "${{ github.event.inputs.version }}",
-          "module_path": "github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v${{ steps.version-validation.outputs.major }}",
+          "module_path": "$MODULE_PATH",
           "git_tag": "${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}",
-          "policy_definition": $(cat "policies/${{ github.event.inputs.policy }}/v${{ steps.version-validation.outputs.major }}/policy-definition.yaml" | jq -Rs .)
+          "policy_definition": $(cat "$POLICY_DEF_PATH" | jq -Rs .)
         }
         EOF
         )
@@ -181,12 +219,22 @@ jobs:
 
     - name: Summary
       run: |
+        MAJOR="${{ steps.version-validation.outputs.major }}"
+        
+        # For major version 1, module path doesn't include version
+        # For major version 2+, module path includes /v<major>
+        if [ "$MAJOR" = "1" ]; then
+          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}"
+        else
+          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v$MAJOR"
+        fi
+        
         echo "🎉 Policy publication completed successfully!"
         echo ""
         echo "📦 Policy: ${{ github.event.inputs.policy }}"
         echo "🏷️  Version: ${{ github.event.inputs.version }}"
         echo "🏷️  Tag: ${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
-        echo "📚 Module: github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v${{ steps.version-validation.outputs.major }}"
+        echo "📚 Module: $MODULE_PATH"
         echo ""
         echo "✅ Version exists in Git"
         echo "✅ Go can fetch the module"
