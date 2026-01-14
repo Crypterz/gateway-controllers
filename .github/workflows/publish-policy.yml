@@ -126,7 +126,7 @@ jobs:
 
     - name: Ensure version is new
       run: |
-        TAG_NAME="${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
+        TAG_NAME="policies/${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
         
         if git tag | grep -q "^$TAG_NAME$"; then
           echo "❌ Version ${{ github.event.inputs.version }} already exists (tag: $TAG_NAME)"
@@ -137,7 +137,7 @@ jobs:
 
     - name: Create Git tag
       run: |
-        TAG_NAME="${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
+        TAG_NAME="policies/${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
         
         git config --global user.name "GitHub Actions"
         git config --global user.email "actions@github.com"
@@ -159,7 +159,7 @@ jobs:
           MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v$MAJOR"
         fi
         
-        VERSION_TAG="${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
+        VERSION_TAG="v${{ github.event.inputs.version }}"
         
         echo "Testing module resolution: $MODULE_PATH@$VERSION_TAG"
         
@@ -197,7 +197,7 @@ jobs:
           "policy": "${{ github.event.inputs.policy }}",
           "version": "${{ github.event.inputs.version }}",
           "module_path": "$MODULE_PATH",
-          "git_tag": "${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}",
+          "git_tag": "policies/${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}",
           "policy_definition": $(cat "$POLICY_DEF_PATH" | jq -Rs .)
         }
         EOF
@@ -233,7 +233,7 @@ jobs:
         echo ""
         echo "📦 Policy: ${{ github.event.inputs.policy }}"
         echo "🏷️  Version: ${{ github.event.inputs.version }}"
-        echo "🏷️  Tag: ${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
+        echo "🏷️  Tag: policies/${{ github.event.inputs.policy }}/v${{ github.event.inputs.version }}"
         echo "📚 Module: $MODULE_PATH"
         echo ""
         echo "✅ Version exists in Git"
