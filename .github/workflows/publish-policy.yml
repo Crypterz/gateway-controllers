@@ -2,274 +2,310 @@ name: Publish Policy
 
 on:
   workflow_dispatch:
-    branches:
-      - main
     inputs:
       policy:
-        description: 'Policy folder name (e.g., ratelimit)'
+        description: "Policy folder name (e.g., ratelimit)"
         required: true
         type: string
       version:
-        description: 'Version (SemVer format: X.Y.Z or X.Y.Z-dev.N or X.Y.Z-rc.N)'
+        description: "Version (SemVer: X.Y.Z | X.Y.Z-dev.N | X.Y.Z-rc.N)"
         required: true
         type: string
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
-  validate-and-publish:
+  publish-policy:
+    name: Validate, Test & Publish Policy
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write  # for creating tags
-      actions: read    # for checkout
-    
+
+    # ✅ Enforce main branch only
+    if: github.ref == 'refs/heads/main'
+
     steps:
-    - name: Validate inputs
-      run: |
-        # Validate policy folder name (alphanumeric, hyphens only)
-        if ! echo "${{ github.event.inputs.policy }}" | grep -E '^[a-zA-Z0-9-]+$'; then
-          echo "❌ Policy folder name must contain only alphanumeric characters and hyphens"
-          exit 1
-        fi
-        
-        # Validate version format more strictly
-        if ! echo "${{ github.event.inputs.version }}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-(dev|rc)\.[0-9]+)?$'; then
-          echo "❌ Version must be valid SemVer (e.g., 1.0.0, 1.0.0-dev.1, 1.0.0-rc.1)"
-          exit 1
-        fi
-        
-        echo "✅ Input validation passed"
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Fetch all history for tag checking
+      # ------------------------------------------------------------
+      # Input validation
+      # ------------------------------------------------------------
+      - name: Validate inputs
+        shell: bash
+        run: |
+          set -euo pipefail
 
-    - name: Setup Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: '1.23'
-        cache: true
-        cache-dependency-path: 'policies/${{ github.event.inputs.policy }}/go.sum'
+          POLICY="${{ github.event.inputs.policy }}"
+          VERSION="${{ github.event.inputs.version }}"
 
-
-
-    - name: Parse and validate version
-      id: version-validation
-      run: |
-        VERSION="${{ github.event.inputs.version }}"
-        POLICY="${{ github.event.inputs.policy }}"
-        
-        # Extract major, minor, patch
-        MAJOR=$(echo "$VERSION" | cut -d. -f1)
-        MINOR=$(echo "$VERSION" | cut -d. -f2)
-        PATCH=$(echo "$VERSION" | cut -d. -f3 | sed 's/-.*//')
-        
-        # Determine module path and target directory
-        if [ "$MAJOR" = "0" ] || [ "$MAJOR" = "1" ]; then
-          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/$POLICY"
-          TARGET_DIR="policies/$POLICY"
-        else
-          MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/$POLICY/v$MAJOR"
-          TARGET_DIR="policies/$POLICY/v$MAJOR"
-        fi
-        
-        TAG_NAME="policies/$POLICY/v$VERSION"
-        
-        echo "✅ Version format valid: $VERSION"
-        echo "major=$MAJOR" >> $GITHUB_OUTPUT
-        echo "minor=$MINOR" >> $GITHUB_OUTPUT
-        echo "patch=$PATCH" >> $GITHUB_OUTPUT
-        echo "module-path=$MODULE_PATH" >> $GITHUB_OUTPUT
-        echo "target-dir=$TARGET_DIR" >> $GITHUB_OUTPUT
-        echo "tag-name=$TAG_NAME" >> $GITHUB_OUTPUT
-
-
-
-    - name: Validate policy structure
-      run: |
-        TARGET_DIR="${{ steps.version-validation.outputs.target-dir }}"
-        
-        # Check if base policy directory exists first
-        if [ ! -d "policies/${{ github.event.inputs.policy }}" ]; then
-          echo "❌ Policy '${{ github.event.inputs.policy }}' does not exist"
-          echo "Available policies:"
-          ls -1 policies/ 2>/dev/null || echo "No policies directory found"
-          exit 1
-        fi
-        
-        if [ ! -d "$TARGET_DIR" ]; then
-          echo "❌ Policy directory $TARGET_DIR does not exist"
-          echo "Expected structure for major version ${{ steps.version-validation.outputs.major }}:"
-          echo "  - v0/v1: policies/${{ github.event.inputs.policy }}/"
-          echo "  - v2+: policies/${{ github.event.inputs.policy }}/v${{ steps.version-validation.outputs.major }}/"
-          exit 1
-        fi
-        
-        # Check required files
-        for file in "go.mod" "policy-definition.yaml"; do
-          if [ ! -f "$TARGET_DIR/$file" ]; then
-            echo "❌ $file not found in $TARGET_DIR"
+          if ! [[ "$POLICY" =~ ^[a-zA-Z0-9-]+$ ]]; then
+            echo "❌ Invalid policy name: $POLICY"
             exit 1
           fi
-        done
-        
-        # Validate go.mod module path
-        EXPECTED_MODULE="${{ steps.version-validation.outputs.module-path }}"
-        ACTUAL_MODULE=$(head -n1 "$TARGET_DIR/go.mod" | awk '{print $2}')
-        
-        if [ "$ACTUAL_MODULE" != "$EXPECTED_MODULE" ]; then
-          echo "❌ go.mod module path mismatch"
-          echo "Expected: $EXPECTED_MODULE"
-          echo "Actual: $ACTUAL_MODULE"
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(dev|rc)\.[0-9]+)?$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            exit 1
+          fi
+
+          echo "✅ Inputs validated"
+
+      # ------------------------------------------------------------
+      # Go setup
+      # ------------------------------------------------------------
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      # ------------------------------------------------------------
+      # Resolve version & paths
+      # ------------------------------------------------------------
+      - name: Resolve module metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          POLICY="${{ github.event.inputs.policy }}"
+          VERSION="${{ github.event.inputs.version }}"
+          MAJOR="${VERSION%%.*}"
+
+          if [[ "$MAJOR" == "0" || "$MAJOR" == "1" ]]; then
+            TARGET_DIR="policies/$POLICY"
+            MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/$POLICY"
+          else
+            TARGET_DIR="policies/$POLICY/v$MAJOR"
+            MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/$POLICY/v$MAJOR"
+          fi
+
+          TAG_NAME="policies/$POLICY/v$VERSION"
+
+          echo "target_dir=$TARGET_DIR" >> "$GITHUB_OUTPUT"
+          echo "module_path=$MODULE_PATH" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+          echo "✅ Metadata resolved"
+
+      # ------------------------------------------------------------
+      # Policy structure validation
+      # ------------------------------------------------------------
+      - name: Validate policy structure
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DIR="${{ steps.meta.outputs.target_dir }}"
+
+          [[ -d "$DIR" ]] || { echo "❌ Missing directory: $DIR"; exit 1; }
+
+          for f in go.mod policy-definition.yaml; do
+            [[ -f "$DIR/$f" ]] || { echo "❌ Missing $f in $DIR"; exit 1; }
+          done
+
+          EXPECTED="${{ steps.meta.outputs.module_path }}"
+          ACTUAL=$(awk 'NR==1 {print $2}' "$DIR/go.mod")
+
+          [[ "$EXPECTED" == "$ACTUAL" ]] || {
+            echo "❌ go.mod module mismatch"
+            echo "Expected: $EXPECTED"
+            echo "Actual:   $ACTUAL"
+            exit 1
+          }
+
+          echo "✅ Policy structure valid"
+
+      # ------------------------------------------------------------
+      # Tests
+      # ------------------------------------------------------------
+      - name: Run policy tests
+        working-directory: ${{ steps.meta.outputs.target_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          go test -v -race ./...
+
+      # ------------------------------------------------------------
+      # Git hygiene
+      # ------------------------------------------------------------
+      - name: Ensure clean working tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+      # ------------------------------------------------------------
+      # Ensure version uniqueness
+      # ------------------------------------------------------------
+      - name: Ensure version is new
+        shell: bash
+        run: |
+          set -euo pipefail
+          git tag -l | grep -qx "${{ steps.meta.outputs.tag_name }}" && {
+            echo "❌ Tag already exists"
+            exit 1
+          } || echo "✅ Version is new"
+
+      # ------------------------------------------------------------
+      # Create Git tag
+      # ------------------------------------------------------------
+      - name: Create and push tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${{ steps.meta.outputs.tag_name }}" \
+            -m "Release ${{ github.event.inputs.policy }} v${{ github.event.inputs.version }}"
+
+          git push origin "${{ steps.meta.outputs.tag_name }}"
+
+      # ------------------------------------------------------------
+      # Verify Go module resolution
+      # ------------------------------------------------------------
+      - name: Verify Go module resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          MOD="${{ steps.meta.outputs.module_path }}"
+          VER="v${{ github.event.inputs.version }}"
+
+          for i in 1 2 3; do
+            if go list -m "$MOD@$VER"; then
+              echo "✅ Module resolved"
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo "❌ Go module resolution failed"
           exit 1
-        fi
-        
-        echo "✅ Policy structure validation passed"
 
-    - name: Run policy tests
-      working-directory: ${{ steps.version-validation.outputs.target-dir }}
-      run: |
-        echo "Running tests in ${{ steps.version-validation.outputs.target-dir }}"
-        
-        # Run tests with verbose output and race detection
-        # Note: Race detection re-enabled after fixing known race conditions
-        if ! go test -v -race ./...; then
-          echo "❌ Tests failed — release aborted"
-          exit 1
-        fi
-        
-        echo "✅ All tests passed"
+      # ------------------------------------------------------------
+      # Register Policy in Policy Hub (Non-blocking)
+      # ------------------------------------------------------------
+      - name: Register policy in Policy Hub
+        id: policy-hub
+        shell: bash
+        env:
+          POLICY_HUB_URL: ${{ secrets.POLICY_HUB_URL }}
+          POLICY_HUB_TOKEN: ${{ secrets.POLICY_HUB_TOKEN }}
+        run: |
+          set -euo pipefail
 
-    - name: Ensure version is new
-      run: |
-        TAG_NAME="${{ steps.version-validation.outputs.tag-name }}"
-        
-        if git tag -l | grep -q "^$TAG_NAME$"; then
-          echo "❌ Version ${{ github.event.inputs.version }} already exists (tag: $TAG_NAME)"
-          exit 1
-        fi
-        
-        echo "✅ Version ${{ github.event.inputs.version }} is new"
+          echo "📝 Registering policy in Policy Hub..."
 
-    - name: Create Git tag
-      run: |
-        TAG_NAME="${{ steps.version-validation.outputs.tag-name }}"
-        
-        # Use GitHub Actions bot identity
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        
-        # Create annotated tag with message
-        git tag -a "$TAG_NAME" -m "Release ${{ github.event.inputs.policy }} v${{ github.event.inputs.version }}"
-        git push origin "$TAG_NAME"
-        
-        echo "✅ Created and pushed tag: $TAG_NAME"
-
-    - name: Verify Go module resolution
-      run: |
-        MODULE_PATH="${{ steps.version-validation.outputs.module-path }}"
-        VERSION_TAG="v${{ github.event.inputs.version }}"
-        
-        echo "Testing module resolution: $MODULE_PATH@$VERSION_TAG"
-        
-        # Wait for tag to propagate and retry module resolution
-        for i in {1..3}; do
-          echo "Attempt $i/3..."
-          if go list -m "$MODULE_PATH@$VERSION_TAG" 2>/dev/null; then
-            echo "✅ Go module resolution successful"
+          # Skip if Policy Hub credentials not configured
+          if [[ -z "${POLICY_HUB_URL:-}" || -z "${POLICY_HUB_TOKEN:-}" ]]; then
+            echo "⚠️ Policy Hub credentials not configured - skipping registration"
+            echo "registration_status=skipped" >> "$GITHUB_OUTPUT"
+            echo "registration_message=Policy Hub credentials not configured" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ $i -lt 3 ]; then
-            echo "⚠️  Failed, waiting 15 seconds before retry..."
-            sleep 15
+
+          PAYLOAD=$(jq -n \
+            --arg policy "${{ github.event.inputs.policy }}" \
+            --arg version "${{ github.event.inputs.version }}" \
+            --arg module_path "${{ steps.meta.outputs.module_path }}" \
+            --arg git_tag "${{ steps.meta.outputs.tag_name }}" \
+            --arg repository "${{ github.repository }}" \
+            --arg commit_sha "${{ github.sha }}" \
+            --rawfile policy_def "${{ steps.meta.outputs.target_dir }}/policy-definition.yaml" \
+            '{
+              policy: $policy,
+              version: $version,
+              module_path: $module_path,
+              git_tag: $git_tag,
+              repository: $repository,
+              commit_sha: $commit_sha,
+              policy_definition: $policy_def,
+              published_at: now | strftime("%Y-%m-%dT%H:%M:%SZ")
+            }')
+
+          # Attempt registration with error handling
+          if HTTP_RESPONSE=$(curl -sSL -w "HTTPSTATUS:%{http_code}" \
+            -X POST "$POLICY_HUB_URL/policies/register" \
+            -H "Authorization: Bearer $POLICY_HUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" 2>&1); then
+            
+            HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tr -d '\n' | sed -E 's/.*HTTPSTATUS:([0-9]{3})$/\1/')
+            RESPONSE_BODY=$(echo "$HTTP_RESPONSE" | sed -E 's/HTTPSTATUS:[0-9]{3}$//')
+            
+            if [[ "$HTTP_STATUS" =~ ^(200|201)$ ]]; then
+              echo "✅ Policy registered successfully in Policy Hub"
+              echo "registration_status=success" >> "$GITHUB_OUTPUT"
+              echo "registration_message=Policy registered successfully" >> "$GITHUB_OUTPUT"
+            else
+              echo "❌ Policy Hub registration failed (HTTP $HTTP_STATUS)"
+              echo "Response: $RESPONSE_BODY"
+              echo "registration_status=failed" >> "$GITHUB_OUTPUT"
+              echo "registration_message=HTTP $HTTP_STATUS: $RESPONSE_BODY" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "❌ Policy Hub registration failed - network/connection error"
+            echo "Error: $HTTP_RESPONSE"
+            echo "registration_status=failed" >> "$GITHUB_OUTPUT"
+            echo "registration_message=Network error: $HTTP_RESPONSE" >> "$GITHUB_OUTPUT"
           fi
-        done
-        
-        echo "❌ Go cannot resolve module $MODULE_PATH@$VERSION_TAG after 3 attempts"
-        echo "This might be due to Git tag propagation delay or network issues"
-        exit 1
 
-    - name: Register policy in Policy Hub
-      run: |
-        echo "📝 Registering policy in Policy Hub..."
-        
-        MODULE_PATH="${{ steps.version-validation.outputs.module-path }}"
-        TARGET_DIR="${{ steps.version-validation.outputs.target-dir }}"
-        TAG_NAME="${{ steps.version-validation.outputs.tag-name }}"
-        
-        # Create registration payload with structured data
-        POLICY_DATA=$(jq -n \
-          --arg policy "${{ github.event.inputs.policy }}" \
-          --arg version "${{ github.event.inputs.version }}" \
-          --arg module_path "$MODULE_PATH" \
-          --arg git_tag "$TAG_NAME" \
-          --arg repository "${{ github.repository }}" \
-          --arg commit_sha "${{ github.sha }}" \
-          --rawfile policy_def "$TARGET_DIR/policy-definition.yaml" \
-          '{
-            policy: $policy,
-            version: $version,
-            module_path: $module_path,
-            git_tag: $git_tag,
-            repository: $repository,
-            commit_sha: $commit_sha,
-            policy_definition: $policy_def,
-            published_at: now | strftime("%Y-%m-%dT%H:%M:%SZ")
-          }')
-        
-        echo "Policy registration data prepared:"
-        echo "$POLICY_DATA" | jq .
-        
-        # Placeholder API call - replace with actual Policy Hub endpoint
-        # curl -X POST https://policy-hub-api.example.com/register \
-        #   -H "Authorization: Bearer ${{ secrets.POLICY_HUB_TOKEN }}" \
-        #   -H "Content-Type: application/json" \
-        #   -d "$POLICY_DATA"
-        
-        echo "⚠️  Policy Hub registration is currently a placeholder"
-        echo "Implement the actual API call to your Policy Hub service"
-        
-        echo "✅ Policy registration step completed (placeholder)"
+      # ------------------------------------------------------------
+      # Summary
+      # ------------------------------------------------------------
+      - name: Publish summary
+        run: |
+          # Determine Policy Hub status for summary
+          case "${{ steps.policy-hub.outputs.registration_status }}" in
+            "success")
+              HUB_STATUS="✅ Policy Hub registered"
+              HUB_DETAILS=""
+              ;;
+            "skipped")
+              HUB_STATUS="⚠️ Policy Hub registration skipped"
+              HUB_DETAILS="Configure POLICY_HUB_URL and POLICY_HUB_TOKEN secrets to enable automatic registration"
+              ;;
+            "failed")
+              HUB_STATUS="❌ Policy Hub registration failed"
+              HUB_DETAILS="Use 'Complete Policy Registration' workflow to retry registration"
+              ;;
+            *)
+              HUB_STATUS="❓ Policy Hub status unknown"
+              HUB_DETAILS=""
+              ;;
+          esac
 
-    - name: Summary
-      run: |
-        MODULE_PATH="${{ steps.version-validation.outputs.module-path }}"
-        TAG_NAME="${{ steps.version-validation.outputs.tag-name }}"
-        
-        echo "🎉 Policy publication completed successfully!"
-        echo ""
-        echo "📦 Policy: ${{ github.event.inputs.policy }}"
-        echo "🏷️  Version: ${{ github.event.inputs.version }}"
-        echo "🏷️  Tag: $TAG_NAME"
-        echo "📚 Module: $MODULE_PATH"
-        echo "🔗 Repository: https://github.com/${{ github.repository }}"
-        echo ""
-        echo "✅ Git tag created and pushed"
-        echo "✅ Go module resolution verified"
-        echo "✅ Policy Hub registration prepared"
-        echo ""
-        echo "🚀 Ready for use!"
-        
-        # Create GitHub step summary
-        cat >> $GITHUB_STEP_SUMMARY << EOF
-        # Policy Published Successfully
-        
-        | Item | Value |
-        |------|-------|
-        | **Policy** | \`${{ github.event.inputs.policy }}\` |
-        | **Version** | \`${{ github.event.inputs.version }}\` |
-        | **Git Tag** | \`$TAG_NAME\` |
-        | **Go Module** | \`$MODULE_PATH\` |
-        | **Repository** | [${{ github.repository }}](https://github.com/${{ github.repository }}) |
-        
-        ## Usage
-        
-        \`\`\`bash
-        go get $MODULE_PATH@v${{ github.event.inputs.version }}
-        \`\`\`
-        
-        ## Status
-        - ✅ Git tag created and pushed
-        - ✅ Go module resolution verified  
-        - ✅ Policy Hub registration prepared
-        EOF
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # 🎉 Policy Published Successfully
+
+          | Item | Value |
+          |------|------|
+          | Policy | \`${{ github.event.inputs.policy }}\` |
+          | Version | \`${{ github.event.inputs.version }}\` |
+          | Tag | \`${{ steps.meta.outputs.tag_name }}\` |
+          | Go Module | \`${{ steps.meta.outputs.module_path }}\` |
+
+          ## Usage
+          \`\`\`bash
+          go get ${{ steps.meta.outputs.module_path }}@v${{ github.event.inputs.version }}
+          \`\`\`
+
+          ## Status
+          ✅ Tests passed  
+          ✅ Tag created  
+          ✅ Module verified  
+          $HUB_STATUS
+
+          $HUB_DETAILS
+          EOF
