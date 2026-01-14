@@ -131,10 +131,9 @@ jobs:
       run: |
         echo "Running tests in ${{ steps.version-validation.outputs.target-dir }}"
         
-        # Run tests with verbose output
-        # Note: Race detection disabled temporarily due to known race conditions
-        # in cleanup goroutines that need to be fixed in the policy code
-        if ! go test -v ./...; then
+        # Run tests with verbose output and race detection
+        # Note: Race detection re-enabled after fixing known race conditions
+        if ! go test -v -race ./...; then
           echo "❌ Tests failed — release aborted"
           exit 1
         fi
