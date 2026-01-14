@@ -151,9 +151,9 @@ jobs:
       run: |
         MAJOR="${{ steps.version-validation.outputs.major }}"
         
-        # For major version 1, module path doesn't include version
+        # For major versions 0 and 1, module path doesn't include version
         # For major version 2+, module path includes /v<major>
-        if [ "$MAJOR" = "1" ]; then
+        if [ "$MAJOR" = "0" ] || [ "$MAJOR" = "1" ]; then
           MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}"
         else
           MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v$MAJOR"
@@ -179,9 +179,9 @@ jobs:
         
         MAJOR="${{ steps.version-validation.outputs.major }}"
         
-        # For major version 1, module path doesn't include version
+        # For major versions 0 and 1, module path doesn't include version
         # For major version 2+, module path includes /v<major>
-        if [ "$MAJOR" = "1" ]; then
+        if [ "$MAJOR" = "0" ] || [ "$MAJOR" = "1" ]; then
           MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}"
           POLICY_DEF_PATH="policies/${{ github.event.inputs.policy }}/policy-definition.yaml"
         else
@@ -221,9 +221,9 @@ jobs:
       run: |
         MAJOR="${{ steps.version-validation.outputs.major }}"
         
-        # For major version 1, module path doesn't include version
+        # For major versions 0 and 1, module path doesn't include version
         # For major version 2+, module path includes /v<major>
-        if [ "$MAJOR" = "1" ]; then
+        if [ "$MAJOR" = "0" ] || [ "$MAJOR" = "1" ]; then
           MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}"
         else
           MODULE_PATH="github.com/DakshithaS/gateway-controllers/policies/${{ github.event.inputs.policy }}/v$MAJOR"
