@@ -1,0 +1,342 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'policies/**'
+      - '.github/workflows/**'
+  pull_request_target:
+    branches: [main, master]
+    paths:
+      - 'policies/**'
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-checks:
+    name: Build, Test & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ------------------------------------------------------------
+      # Checkout
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------------------------
+      # Setup Go
+      # ------------------------------------------------------------
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache: true
+
+      # ------------------------------------------------------------
+      # Install additional tools
+      # ------------------------------------------------------------
+      - name: Install formatting tools
+        run: |
+          go install golang.org/x/tools/cmd/goimports@latest
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      # ------------------------------------------------------------
+      # Find changed policies
+      # ------------------------------------------------------------
+      - name: Find changed policies
+        id: changed-policies
+        run: |
+          # Get list of changed files
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="${{ github.event.pull_request_target.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request_target.head.sha }}"
+          fi
+
+          # Find changed policy directories
+          CHANGED_POLICIES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | \
+            grep '^policies/' | \
+            cut -d/ -f2 | \
+            sort -u || true)
+
+          if [[ -z "$CHANGED_POLICIES" ]]; then
+            echo "No policy changes detected"
+            echo "policies=" >> "$GITHUB_OUTPUT"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed policies: $CHANGED_POLICIES"
+            echo "policies<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$CHANGED_POLICIES" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ------------------------------------------------------------
+      # Format check
+      # ------------------------------------------------------------
+      - name: Check Go formatting
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Checking Go formatting..."
+          
+          # Check if gofmt would make any changes
+          UNFORMATTED=$(find policies/ -name "*.go" -exec gofmt -l {} +)
+          
+          if [[ -n "$UNFORMATTED" ]]; then
+            echo "❌ The following files are not properly formatted:"
+            echo "$UNFORMATTED"
+            echo ""
+            echo "Run 'go fmt ./...' to fix formatting issues."
+            exit 1
+          fi
+          
+          echo "✅ All Go files are properly formatted"
+
+      # ------------------------------------------------------------
+      # Import check
+      # ------------------------------------------------------------
+      - name: Check Go imports
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Checking Go imports..."
+          
+          # Check if goimports would make any changes
+          UNFORMATTED=$(find policies/ -name "*.go" -exec goimports -l {} +)
+          
+          if [[ -n "$UNFORMATTED" ]]; then
+            echo "❌ The following files have import issues:"
+            echo "$UNFORMATTED"
+            echo ""
+            echo "Run 'goimports -w .' to fix import issues."
+            exit 1
+          fi
+          
+          echo "✅ All Go imports are properly formatted"
+
+      # ------------------------------------------------------------
+      # Vet check
+      # ------------------------------------------------------------
+      - name: Run go vet
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Running go vet on changed policies..."
+          
+          EXIT_CODE=0
+          
+          while IFS= read -r policy; do
+            [[ -z "$policy" ]] && continue
+            
+            echo "Checking policy: $policy"
+            if ! (cd "policies/$policy" && go vet ./...); then
+              echo "❌ go vet failed for policy: $policy"
+              EXIT_CODE=1
+            fi
+          done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "✅ go vet passed for all policies"
+          fi
+          
+          exit $EXIT_CODE
+
+      # ------------------------------------------------------------
+      # Static check
+      # ------------------------------------------------------------
+      - name: Run staticcheck
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Running staticcheck on changed policies..."
+          
+          EXIT_CODE=0
+          
+          while IFS= read -r policy; do
+            [[ -z "$policy" ]] && continue
+            
+            echo "Checking policy: $policy"
+            if ! (cd "policies/$policy" && staticcheck ./...); then
+              echo "❌ staticcheck failed for policy: $policy"
+              EXIT_CODE=1
+            fi
+          done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "✅ staticcheck passed for all policies"
+          fi
+          
+          exit $EXIT_CODE
+
+      # ------------------------------------------------------------
+      # Vulnerability check
+      # ------------------------------------------------------------
+      - name: Run govulncheck
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Running govulncheck on changed policies..."
+          
+          # Ensure govulncheck is in PATH
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          
+          EXIT_CODE=0
+          
+          while IFS= read -r policy; do
+            [[ -z "$policy" ]] && continue
+            
+            echo "Checking vulnerabilities in policy: $policy"
+            if ! (cd "policies/$policy" && govulncheck ./...); then
+              echo "❌ govulncheck failed for policy: $policy"
+              EXIT_CODE=1
+            fi
+          done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "✅ govulncheck passed for all policies"
+          fi
+          
+          exit $EXIT_CODE
+
+      # ------------------------------------------------------------
+      # Build check
+      # ------------------------------------------------------------
+      - name: Build policies
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Building changed policies..."
+          
+          EXIT_CODE=0
+          
+          while IFS= read -r policy; do
+            [[ -z "$policy" ]] && continue
+            
+            echo "Building policy: $policy"
+            if ! (cd "policies/$policy" && go build -v ./...); then
+              echo "❌ Build failed for policy: $policy"
+              EXIT_CODE=1
+            fi
+          done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "✅ Build successful for all policies"
+          fi
+          
+          exit $EXIT_CODE
+
+      # ------------------------------------------------------------
+      # Test policies
+      # ------------------------------------------------------------
+      - name: Test policies
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Testing changed policies..."
+          
+          EXIT_CODE=0
+          
+          while IFS= read -r policy; do
+            [[ -z "$policy" ]] && continue
+            
+            echo "Testing policy: $policy"
+            if ! (cd "policies/$policy" && go test -v -race -timeout=5m ./...); then
+              echo "❌ Tests failed for policy: $policy"
+              EXIT_CODE=1
+            fi
+          done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "✅ Tests passed for all policies"
+          fi
+          
+          exit $EXIT_CODE
+
+      # ------------------------------------------------------------
+      # Validate policy structure
+      # ------------------------------------------------------------
+      - name: Validate policy structure
+        if: steps.changed-policies.outputs.has_changes == 'true'
+        run: |
+          echo "Validating policy structure..."
+          
+          EXIT_CODE=0
+          
+          while IFS= read -r policy; do
+            [[ -z "$policy" ]] && continue
+            
+            echo "Validating policy: $policy"
+            
+            POLICY_DIR="policies/$policy"
+            
+            # Check required files exist
+            for file in go.mod policy-definition.yaml; do
+              if [[ ! -f "$POLICY_DIR/$file" ]]; then
+                echo "❌ Missing required file: $POLICY_DIR/$file"
+                EXIT_CODE=1
+              fi
+            done
+            
+            # Check at least one .go file exists
+            if ! find "$POLICY_DIR" -name "*.go" -type f | grep -q .; then
+              echo "❌ No .go files found in $POLICY_DIR"
+              EXIT_CODE=1
+            fi
+            
+            # Validate go.mod module path
+            if [[ -f "$POLICY_DIR/go.mod" ]]; then
+              MODULE_PATH=$(grep '^module ' "$POLICY_DIR/go.mod" | awk '{print $2}')
+              EXPECTED="github.com/DakshithaS/gateway-controllers/policies/$policy"
+              
+              if [[ "$MODULE_PATH" != "$EXPECTED"* ]]; then
+                echo "❌ Invalid module path in $POLICY_DIR/go.mod"
+                echo "   Expected: $EXPECTED"
+                echo "   Got: $MODULE_PATH"
+                EXIT_CODE=1
+              fi
+            fi
+            
+          done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          if [[ $EXIT_CODE -eq 0 ]]; then
+            echo "✅ Policy structure validation passed"
+          fi
+          
+          exit $EXIT_CODE
+
+      # ------------------------------------------------------------
+      # Summary
+      # ------------------------------------------------------------
+      - name: Generate summary
+        if: always()
+        run: |
+          if [[ "${{ steps.changed-policies.outputs.has_changes }}" == "true" ]]; then
+            echo "## 🔍 PR Checks Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Changed policies:**" >> $GITHUB_STEP_SUMMARY
+            
+            while IFS= read -r policy; do
+              [[ -z "$policy" ]] && continue
+              echo "- \`$policy\`" >> $GITHUB_STEP_SUMMARY
+            done <<< "${{ steps.changed-policies.outputs.policies }}"
+            
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Checks performed:**" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Go formatting" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Import formatting" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Go vet" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Static analysis (staticcheck)" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Vulnerability check (govulncheck)" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Build verification" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Test execution (with race detection)" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Policy structure validation" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## 🔍 PR Checks Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "No policy changes detected in this PR." >> $GITHUB_STEP_SUMMARY
+          fi
