@@ -104,7 +104,8 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 	// Extract API key based on location
 	var providedKey string
 
-	if location == "header" {
+	switch location {
+	case "header":
 		// Check header (case-insensitive)
 		if headerValues := ctx.Headers.Get(http.CanonicalHeaderKey(keyName)); len(headerValues) > 0 {
 			providedKey = headerValues[0]
@@ -113,7 +114,7 @@ func (p *APIKeyPolicy) OnRequest(ctx *policy.RequestContext, params map[string]i
 				"keyLength", len(providedKey),
 			)
 		}
-	} else if location == "query" {
+	case "query":
 		// Extract query parameters from the full path
 		providedKey = extractQueryParam(ctx.Path, keyName)
 		if providedKey != "" {
