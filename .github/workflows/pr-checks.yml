@@ -135,8 +135,9 @@ jobs:
             [[ -z "$policy" ]] && continue
             
             echo "Checking policy: $policy"
-            output=$(cd "policies/$policy" && go vet ./... 2>&1)
-            if [[ $? -ne 0 ]]; then
+            if output=$(cd "policies/$policy" && go vet ./... 2>&1); then
+              :
+            else
               echo "ERRORS<<EOF" >> $GITHUB_ENV
               echo "❌ go vet failed for policy: $policy" >> $GITHUB_ENV
               echo "$output" >> $GITHUB_ENV
@@ -157,8 +158,9 @@ jobs:
             [[ -z "$policy" ]] && continue
             
             echo "Checking policy: $policy"
-            output=$(cd "policies/$policy" && staticcheck ./... 2>&1)
-            if [[ $? -ne 0 ]]; then
+            if output=$(cd "policies/$policy" && staticcheck ./... 2>&1); then
+              :
+            else
               echo "ERRORS<<EOF" >> $GITHUB_ENV
               echo "❌ staticcheck failed for policy: $policy" >> $GITHUB_ENV
               echo "$output" >> $GITHUB_ENV
@@ -213,8 +215,9 @@ jobs:
             [[ -z "$policy" ]] && continue
             
             echo "Building policy: $policy"
-            output=$(cd "policies/$policy" && go build -v ./... 2>&1)
-            if [[ $? -ne 0 ]]; then
+            if output=$(cd "policies/$policy" && go build -v ./... 2>&1); then
+              :
+            else
               echo "ERRORS<<EOF" >> $GITHUB_ENV
               echo "❌ Build failed for policy: $policy" >> $GITHUB_ENV
               echo "$output" >> $GITHUB_ENV
@@ -235,8 +238,9 @@ jobs:
             [[ -z "$policy" ]] && continue
             
             echo "Testing policy: $policy"
-            output=$(cd "policies/$policy" && go test -v -race -timeout=5m ./... 2>&1)
-            if [[ $? -ne 0 ]]; then
+            if output=$(cd "policies/$policy" && go test -v -race -timeout=5m ./... 2>&1); then
+              :
+            else
               echo "ERRORS<<EOF" >> $GITHUB_ENV
               echo "❌ Tests failed for policy: $policy" >> $GITHUB_ENV
               echo "$output" >> $GITHUB_ENV
