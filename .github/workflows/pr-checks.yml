@@ -89,10 +89,12 @@ jobs:
           UNFORMATTED=$(find policies/ -name "*.go" -exec gofmt -l {} +)
           
           if [[ -n "$UNFORMATTED" ]]; then
-            echo "❌ The following files are not properly formatted:"
-            echo "$UNFORMATTED"
-            echo ""
-            echo "Run 'go fmt ./...' to fix formatting issues."
+            echo "ERRORS<<EOF" >> $GITHUB_ENV
+            echo "❌ The following files are not properly formatted:" >> $GITHUB_ENV
+            echo "$UNFORMATTED" >> $GITHUB_ENV
+            echo "" >> $GITHUB_ENV
+            echo "Run 'go fmt ./...' to fix formatting issues." >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
             exit 1
           fi
           
@@ -110,10 +112,12 @@ jobs:
           UNFORMATTED=$(find policies/ -name "*.go" -exec goimports -l {} +)
           
           if [[ -n "$UNFORMATTED" ]]; then
-            echo "❌ The following files have import issues:"
-            echo "$UNFORMATTED"
-            echo ""
-            echo "Run 'goimports -w .' to fix import issues."
+            echo "ERRORS<<EOF" >> $GITHUB_ENV
+            echo "❌ The following files have import issues:" >> $GITHUB_ENV
+            echo "$UNFORMATTED" >> $GITHUB_ENV
+            echo "" >> $GITHUB_ENV
+            echo "Run 'goimports -w .' to fix import issues." >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
             exit 1
           fi
           
