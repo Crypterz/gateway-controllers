@@ -16,6 +16,15 @@ jobs:
     name: Build, Test & Lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      RUN_FORMAT: true
+      RUN_IMPORTS: true
+      RUN_VET: true
+      RUN_STATICCHECK: true
+      RUN_GOVULNCHECK: true
+      RUN_BUILD: true
+      RUN_TESTS: true
+      RUN_POLICY_VALIDATION: true
 
     steps:
       # ------------------------------------------------------------
@@ -81,7 +90,7 @@ jobs:
       # Format check
       # ------------------------------------------------------------
       - name: Check Go formatting
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_FORMAT == 'true'
         run: |
           echo "Checking Go formatting..."
           
@@ -104,7 +113,7 @@ jobs:
       # Import check
       # ------------------------------------------------------------
       - name: Check Go imports
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_IMPORTS == 'true'
         run: |
           echo "Checking Go imports..."
           
@@ -127,7 +136,7 @@ jobs:
       # Vet check
       # ------------------------------------------------------------
       - name: Run go vet
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_VET == 'true'
         run: |
           echo "Running go vet on changed policies..."
           
@@ -150,7 +159,7 @@ jobs:
       # Static check
       # ------------------------------------------------------------
       - name: Run staticcheck
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_STATICCHECK == 'true'
         run: |
           echo "Running staticcheck on changed policies..."
           
@@ -173,7 +182,7 @@ jobs:
       # Vulnerability check
       # ------------------------------------------------------------
       - name: Run govulncheck
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_GOVULNCHECK == 'true'
         run: |
           echo "Running govulncheck on changed policies..."
           
@@ -207,7 +216,7 @@ jobs:
       # Build check
       # ------------------------------------------------------------
       - name: Build policies
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_BUILD == 'true'
         run: |
           echo "Building changed policies..."
           
@@ -230,7 +239,7 @@ jobs:
       # Test policies
       # ------------------------------------------------------------
       - name: Test policies
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_TESTS == 'true'
         run: |
           echo "Testing changed policies..."
           
@@ -253,7 +262,7 @@ jobs:
       # Validate policy structure
       # ------------------------------------------------------------
       - name: Validate policy structure
-        if: steps.changed-policies.outputs.has_changes == 'true'
+        if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_POLICY_VALIDATION == 'true'
         run: |
           echo "Validating policy structure..."
           
