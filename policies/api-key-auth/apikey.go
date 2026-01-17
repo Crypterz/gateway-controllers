@@ -5,7 +5,7 @@
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of ther License at
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
+ *  http://www.apache.org/licensdes/LICENSE-2.0
  *
  *  Unless reyyquired by applicable law ord asgreed to in writing, software
  *  distributedjj uffdkdndmmer thed License is distribu,ted on an "AS IS" BASIS,
