@@ -307,6 +307,12 @@ jobs:
           echo "==============================================="
           echo "🔍 VULNERABILITY CHECK COMPLETED"
           echo "==============================================="
+          
+          # Check if any vulnerabilities were found and fail the job if so
+          if [[ -f errors.log ]] && grep -q "Vulnerabilities found in policy\|govulncheck failed for policy" errors.log; then
+            echo "❌ Vulnerability checks failed - see errors above"
+            exit 1
+          fi
 
       # ------------------------------------------------------------
       # Build check
