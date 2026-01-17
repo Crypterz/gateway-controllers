@@ -475,70 +475,27 @@ jobs:
             let errorsContent = '';
             
             if (fs.existsSync('errors.log')) {
-              const rawErrors = fs.readFileSync('errors.log', 'utf8');
-              
-              // Simple approach: organize by type
-              const vulnerabilityPolicies = new Set();
-              const staticcheckPolicies = new Map();
-              
-              const lines = rawErrors.split('\n');
-              let currentPolicy = '';
-              let currentType = '';
-              let collectingStatic = false;
-              
-              for (const line of lines) {
-                if (line.includes('❌ Vulnerabilities found in policy:')) {
-                  currentPolicy = line.match(/policy: (.+)$/)?.[1];
-                  if (currentPolicy) vulnerabilityPolicies.add(currentPolicy);
-                  currentType = 'vuln';
-                  collectingStatic = false;
-                } else if (line.includes('❌ staticcheck failed for policy:')) {
-                  currentPolicy = line.match(/policy: (.+)$/)?.[1];
-                  currentType = 'static';
-                  collectingStatic = false;
-                } else if (line.includes('🔍 STATICCHECK ERRORS:')) {
-                  currentType = 'static';
-                  collectingStatic = true;
-                } else if (collectingStatic && line.trim() && !line.includes('❌') && !line.includes('🔍')) {
-                  if (!staticcheckPolicies.has(currentPolicy)) {
-                    staticcheckPolicies.set(currentPolicy, []);
-                  }
-                  staticcheckPolicies.get(currentPolicy).push(line);
-                } else if (line.includes('Error:') && currentType === 'static' && currentPolicy) {
-                  if (!staticcheckPolicies.has(currentPolicy)) {
-                    staticcheckPolicies.set(currentPolicy, []);
-                  }
-                  staticcheckPolicies.get(currentPolicy).push(line.replace('Error: ', ''));
-                }
-              }
-              
-              // Build clean output
-              if (vulnerabilityPolicies.size > 0) {
-                errorsContent += '### 🔴 Security Vulnerabilities\n\n';
-                vulnerabilityPolicies.forEach(policy => {
-                  errorsContent += `**${policy}**\n`;
-                  errorsContent += '- 🔴 2 vulnerabilities found (Go standard library)\n';
-                  errorsContent += '- 🔧 Fix: Upgrade to Go 1.25.5 or later\n\n';
-                });
-              }
-              
-              if (staticcheckPolicies.size > 0) {
-                errorsContent += '### 🔍 Code Quality Issues\n\n';
-                staticcheckPolicies.forEach((errors, policy) => {
-                  errorsContent += `**${policy}**\n`;
-                  errors.forEach(error => {
-                    errorsContent += `- \`${error}\`\n`;
-                  });
-                  errorsContent += '\n';
-                });
-              }
-              
-              if (!errorsContent) {
-                errorsContent = rawErrors; // Fallback
-              }
+              errorsContent = fs.readFileSync('errors.log', 'utf8');
             } else {
               errorsContent = 'Unknown errors occurred.';
             }
+            
+            const serverUrl = '${{ github.server_url }}';
+            const repo = '${{ github.repository }}';
+            const runId = '${{ github.run_id }}';
+            
+            const body = "## ❌ PR Checks Failed\n\n" +
+              errorsContent + "\n\n" +
+              "### 🛠️ How to Fix\n\n" +
+              "**For Security Vulnerabilities:**\n" +
+              "- Upgrade to Go 1.25.5 or later to fix standard library vulnerabilities\n" +
+              "- See [workflow run](" + serverUrl + "/" + repo + "/actions/runs/" + runId + ") for detailed vulnerability reports\n\n" +
+              "**For Code Quality Issues:**\n" +
+              "- Run `go fmt ./...` to fix formatting issues  \n" +
+              "- Run `goimports -w .` to fix import issues\n" +
+              "- Address staticcheck suggestions in the files mentioned above\n\n" +
+              "---\n" +
+              "*Automated checks include: formatting, imports, vet, staticcheck, vulnerability scanning, build verification, and tests.*";
             
             const serverUrl = '${{ github.server_url }}';
             const repo = '${{ github.repository }}';
