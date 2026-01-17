@@ -100,50 +100,55 @@ jobs:
           SUMMARY_FILE=$(mktemp)
           echo "${{ steps.policies.outputs.policies }}" | while read -r policy; do
             echo "Checking policy: $policy"
-            cd policies/$policy
-            # Formatting check
-            if ! goimports -d . > goimports.out 2>&1; then
+            if cd "policies/$policy" 2>/dev/null; then
+              # Formatting check
+              if ! goimports -d . > goimports.out 2>&1; then
+                echo "### $policy" >> $SUMMARY_FILE
+                echo "- Formatting failed" >> $SUMMARY_FILE
+                cat goimports.out >> $SUMMARY_FILE
+                echo "" >> $SUMMARY_FILE
+              fi
+              # Static check
+              if ! staticcheck ./... > staticcheck.out 2>&1; then
+                if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
+                echo "- Static check failed" >> $SUMMARY_FILE
+                cat staticcheck.out >> $SUMMARY_FILE
+                echo "" >> $SUMMARY_FILE
+              fi
+              # Vulnerability check
+              if ! govulncheck ./... > govulncheck.out 2>&1; then
+                if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
+                echo "- Vulnerability check failed" >> $SUMMARY_FILE
+                cat govulncheck.out >> $SUMMARY_FILE
+                echo "" >> $SUMMARY_FILE
+              fi
+              # Gosec check
+              if ! gosec ./... > gosec.out 2>&1; then
+                if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
+                echo "- Gosec check failed" >> $SUMMARY_FILE
+                cat gosec.out >> $SUMMARY_FILE
+                echo "" >> $SUMMARY_FILE
+              fi
+              # Tests
+              if ! go test ./... > test.out 2>&1; then
+                if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
+                echo "- Tests failed" >> $SUMMARY_FILE
+                cat test.out >> $SUMMARY_FILE
+                echo "" >> $SUMMARY_FILE
+              fi
+              # Tests with race
+              if ! go test -race ./... > test_race.out 2>&1; then
+                if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
+                echo "- Tests with race failed" >> $SUMMARY_FILE
+                cat test_race.out >> $SUMMARY_FILE
+                echo "" >> $SUMMARY_FILE
+              fi
+              cd ../..
+            else
               echo "### $policy" >> $SUMMARY_FILE
-              echo "- Formatting failed" >> $SUMMARY_FILE
-              cat goimports.out >> $SUMMARY_FILE
+              echo "- Directory not found for checks" >> $SUMMARY_FILE
               echo "" >> $SUMMARY_FILE
             fi
-            # Static check
-            if ! staticcheck ./... > staticcheck.out 2>&1; then
-              if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
-              echo "- Static check failed" >> $SUMMARY_FILE
-              cat staticcheck.out >> $SUMMARY_FILE
-              echo "" >> $SUMMARY_FILE
-            fi
-            # Vulnerability check
-            if ! govulncheck ./... > govulncheck.out 2>&1; then
-              if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
-              echo "- Vulnerability check failed" >> $SUMMARY_FILE
-              cat govulncheck.out >> $SUMMARY_FILE
-              echo "" >> $SUMMARY_FILE
-            fi
-            # Gosec check
-            if ! gosec ./... > gosec.out 2>&1; then
-              if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
-              echo "- Gosec check failed" >> $SUMMARY_FILE
-              cat gosec.out >> $SUMMARY_FILE
-              echo "" >> $SUMMARY_FILE
-            fi
-            # Tests
-            if ! go test ./... > test.out 2>&1; then
-              if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
-              echo "- Tests failed" >> $SUMMARY_FILE
-              cat test.out >> $SUMMARY_FILE
-              echo "" >> $SUMMARY_FILE
-            fi
-            # Tests with race
-            if ! go test -race ./... > test_race.out 2>&1; then
-              if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
-              echo "- Tests with race failed" >> $SUMMARY_FILE
-              cat test_race.out >> $SUMMARY_FILE
-              echo "" >> $SUMMARY_FILE
-            fi
-            cd ../..
           done
           SUMMARY=$(cat $SUMMARY_FILE)
           echo "summary<<EOF" >> $GITHUB_OUTPUT
