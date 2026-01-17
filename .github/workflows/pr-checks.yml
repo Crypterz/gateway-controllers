@@ -531,6 +531,10 @@ jobs:
               errorsContent = 'Unknown errors occurred.';
             }
             
+            const serverUrl = '${{ github.server_url }}';
+            const repo = '${{ github.repository }}';
+            const runId = '${{ github.run_id }}';
+            
             const body = `## ❌ PR Checks Failed
 
 ${errorsContent}
@@ -539,7 +543,7 @@ ${errorsContent}
 
 **For Security Vulnerabilities:**
 - Upgrade to Go 1.25.5 or later to fix standard library vulnerabilities
-- See [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for detailed vulnerability reports
+- See [workflow run](${serverUrl}/${repo}/actions/runs/${runId}) for detailed vulnerability reports
 
 **For Code Quality Issues:**
 - Run \`go fmt ./...\` to fix formatting issues  
