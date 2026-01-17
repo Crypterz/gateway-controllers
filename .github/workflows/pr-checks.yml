@@ -52,6 +52,8 @@ jobs:
             done
           done | sort -u)
 
+          echo "Detected policies: $POLICIES"
+
           if [[ -z "$POLICIES" ]]; then
             echo "has_changes=false" >> $GITHUB_OUTPUT
           else
