@@ -84,7 +84,6 @@ jobs:
                 echo true > $BUILD_FAILED_FILE
                 echo "### $policy" >> $SUMMARY_FILE
                 echo "- Build failed" >> $SUMMARY_FILE
-                echo "Captured output: '$output'" >> $SUMMARY_FILE
                 echo '```' >> $SUMMARY_FILE
                 echo "$output" >> $SUMMARY_FILE
                 echo '```' >> $SUMMARY_FILE
@@ -223,14 +222,16 @@ jobs:
         run: |
           echo "## PR Checks Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ -n "${{ steps.build.outputs.build_summary }}" ]]; then
+          build_summary="${{ steps.build.outputs.build_summary }}"
+          if [[ -n "$build_summary" ]]; then
             echo "### Build Failures" >> $GITHUB_STEP_SUMMARY
-            echo "${{ steps.build.outputs.build_summary }}" >> $GITHUB_STEP_SUMMARY
+            echo "$build_summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          if [[ -n "${{ steps.checks.outputs.summary }}" ]]; then
+          checks_summary="${{ steps.checks.outputs.summary }}"
+          if [[ -n "$checks_summary" ]]; then
             echo "### Check Failures" >> $GITHUB_STEP_SUMMARY
-            echo "${{ steps.checks.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
+            echo "$checks_summary" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
