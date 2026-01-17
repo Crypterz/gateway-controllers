@@ -289,12 +289,15 @@ jobs:
               echo "✅ govulncheck passed for policy: $policy"
             elif [[ $exit_code -eq 3 ]]; then
               echo "❌ Vulnerabilities found in policy: $policy" | tee -a "$ROOT_DIR/errors.log"
-              echo "🔍 VULNERABILITY DETAILS:" >> "$ROOT_DIR/errors.log"
-              echo "Policy: $policy" >> "$ROOT_DIR/errors.log"
-              echo "Exit code: $exit_code" >> "$ROOT_DIR/errors.log"
-              echo "Full vulnerability report:" >> "$ROOT_DIR/errors.log"
-              echo "$output" >> "$ROOT_DIR/errors.log"
-              echo "===========================================" >> "$ROOT_DIR/errors.log"
+              
+              # Extract and format vulnerability summary
+              vuln_summary=$(echo "$output" | grep -A2 "Vulnerability #" | grep -E "^\s*(GO-[0-9]+-[0-9]+|More info:)" | head -20)
+              vuln_count=$(echo "$output" | grep -c "Vulnerability #" || echo "0")
+              
+              echo "🔴 $vuln_count vulnerabilities found (Go standard library)" >> "$ROOT_DIR/errors.log"
+              echo "🔧 Fix: Upgrade to Go 1.25.5 or later" >> "$ROOT_DIR/errors.log"
+              echo "📋 Vulnerabilities:" >> "$ROOT_DIR/errors.log"
+              echo "$vuln_summary" | sed 's/^/  /' >> "$ROOT_DIR/errors.log"
               echo "" >> "$ROOT_DIR/errors.log"
             else
               echo "❌ govulncheck failed for policy: $policy (exit code: $exit_code)" | tee -a "$ROOT_DIR/errors.log"
@@ -469,21 +472,78 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const errors = fs.existsSync('errors.log') ? fs.readFileSync('errors.log', 'utf8') : 'Unknown errors occurred.';
+            let errorsContent = '';
+            
+            if (fs.existsSync('errors.log')) {
+              const rawErrors = fs.readFileSync('errors.log', 'utf8');
+              
+              // Parse and structure the errors
+              const lines = rawErrors.split('\n');
+              let currentSection = '';
+              let vulnerabilityErrors = [];
+              let staticcheckErrors = [];
+              let otherErrors = [];
+              
+              for (const line of lines) {
+                if (line.includes('❌ Vulnerabilities found in policy:')) {
+                  currentSection = 'vuln';
+                  const policy = line.match(/policy: (.+)$/)?.[1];
+                  vulnerabilityErrors.push(`**${policy}**`);
+                } else if (line.includes('❌ staticcheck failed for policy:')) {
+                  currentSection = 'static';
+                  const policy = line.match(/policy: (.+)$/)?.[1];
+                  staticcheckErrors.push(`**${policy}**`);
+                } else if (line.includes('🔴') && currentSection === 'vuln') {
+                  vulnerabilityErrors.push(`  ${line}`);
+                } else if (line.includes('🔧') && currentSection === 'vuln') {
+                  vulnerabilityErrors.push(`  ${line}`);
+                } else if (line.includes('Error:') && currentSection === 'static') {
+                  staticcheckErrors.push(`  \`${line.replace('Error: ', '')}\``);
+                } else if (line.includes('❌') && !line.includes('policy:')) {
+                  otherErrors.push(line);
+                }
+              }
+              
+              // Build structured output
+              if (vulnerabilityErrors.length > 0) {
+                errorsContent += '### 🔴 Security Vulnerabilities\\n';
+                errorsContent += vulnerabilityErrors.join('\\n') + '\\n\\n';
+              }
+              
+              if (staticcheckErrors.length > 0) {
+                errorsContent += '### 🔍 Code Quality Issues\\n';
+                errorsContent += staticcheckErrors.join('\\n') + '\\n\\n';
+              }
+              
+              if (otherErrors.length > 0) {
+                errorsContent += '### ❌ Other Issues\\n';
+                errorsContent += otherErrors.join('\\n') + '\\n\\n';
+              }
+              
+              if (!errorsContent) {
+                errorsContent = rawErrors; // Fallback to raw content
+              }
+            } else {
+              errorsContent = 'Unknown errors occurred.';
+            }
             
             const body = `## ❌ PR Checks Failed
 
-            Some automated checks failed for the policies in this PR. Please review the [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for detailed error messages.
+            ${errorsContent}
 
-            **Failed Checks:**
-            ${errors}
+            ### 🛠️ How to Fix
 
-            **Common fixes:**
-            - Run \`go fmt ./...\` to fix formatting issues
+            **For Security Vulnerabilities:**
+            - Upgrade to Go 1.25.5 or later to fix standard library vulnerabilities
+            - See [workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for detailed vulnerability reports
+
+            **For Code Quality Issues:**
+            - Run \`go fmt ./...\` to fix formatting issues  
             - Run \`goimports -w .\` to fix import issues
-            - Address any \`go vet\`, \`staticcheck\`, or build errors shown above
+            - Address staticcheck suggestions in the files mentioned above
 
-            The checks include: Go formatting, import formatting, vet, static analysis, vulnerability scanning, build verification, and tests.`;
+            ---
+            *Automated checks include: formatting, imports, vet, staticcheck, vulnerability scanning, build verification, and tests.*`;
 
             await github.rest.issues.createComment({
               issue_number: context.issue.number,
