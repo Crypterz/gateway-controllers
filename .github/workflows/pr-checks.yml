@@ -64,21 +64,32 @@ jobs:
           fi
 
       - name: Build policies
+        id: build
         if: steps.policies.outputs.has_changes == 'true'
         run: |
+          BUILD_FAILED=false
+          SUMMARY_FILE=$(mktemp)
           echo "${{ steps.policies.outputs.policies }}" | while read -r policy; do
             echo "Building policy: $policy"
             cd policies/$policy
-            if ! go build .; then
-              echo "Build failed for $policy"
-              exit 1
+            if ! go build . > build.out 2>&1; then
+              BUILD_FAILED=true
+              echo "### $policy" >> $SUMMARY_FILE
+              echo "- Build failed" >> $SUMMARY_FILE
+              cat build.out >> $SUMMARY_FILE
+              echo "" >> $SUMMARY_FILE
             fi
             cd ../..
           done
+          SUMMARY=$(cat $SUMMARY_FILE)
+          echo "build_summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "build_failed=$BUILD_FAILED" >> $GITHUB_OUTPUT
 
       - name: Run checks on policies
         id: checks
-        if: steps.policies.outputs.has_changes == 'true'
+        if: steps.policies.outputs.has_changes == 'true' && steps.build.outputs.build_failed != 'true'
         run: |
           SUMMARY_FILE=$(mktemp)
           echo "${{ steps.policies.outputs.policies }}" | while read -r policy; do
@@ -134,14 +145,28 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Comment on PR
-        if: steps.policies.outputs.has_changes == 'true' && steps.checks.outputs.summary != ''
+        if: steps.policies.outputs.has_changes == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            const summary = `${{ steps.checks.outputs.summary }}`;
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: `## PR Checks Summary\n\n${summary}`
-            });
+            let body = '## PR Checks Summary\n\n';
+            const buildSummary = `${{ steps.build.outputs.build_summary }}`;
+            if (buildSummary.trim()) {
+              body += '### Build Failures\n' + buildSummary + '\n';
+            }
+            const checkSummary = `${{ steps.checks.outputs.summary }}`;
+            if (checkSummary.trim()) {
+              body += '### Check Failures\n' + checkSummary + '\n';
+            }
+            if (buildSummary.trim() || checkSummary.trim()) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: body
+              });
+            }
+
+      - name: Fail if build failed
+        if: steps.build.outputs.build_failed == 'true'
+        run: exit 1
