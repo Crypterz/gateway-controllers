@@ -188,33 +188,125 @@ jobs:
       - name: Run govulncheck
         if: steps.changed-policies.outputs.has_changes == 'true' && env.RUN_GOVULNCHECK == 'true'
         run: |
-          echo "Running govulncheck on changed policies..."
+          echo "==============================================="
+          echo "🔍 VULNERABILITY CHECK - DETAILED LOGGING"
+          echo "==============================================="
           
-          # Log versions
+          echo "📋 Environment Information:"
           echo "Go version: $(go version)"
-          echo "Govulncheck version: $(govulncheck -version)"
+          echo "Govulncheck version: $(govulncheck -version 2>&1 || echo 'Failed to get version')"
+          echo "GOROOT: $(go env GOROOT)"
+          echo "GOPATH: $(go env GOPATH)"
+          echo "PWD: $(pwd)"
+          echo "Current user: $(whoami)"
+          echo ""
+          
+          echo "📁 Changed policies to check:"
+          echo "${{ steps.changed-policies.outputs.policies }}"
+          echo ""
           
           # Ensure govulncheck is in PATH
           export PATH="$PATH:$(go env GOPATH)/bin"
+          echo "Updated PATH: $PATH"
+          echo ""
           
           while IFS= read -r policy; do
             [[ -z "$policy" ]] && continue
             
-            echo "Checking vulnerabilities in policy: $policy"
-            output=$(cd "policies/$policy" && govulncheck -db="" -show verbose ./... 2>&1 || true)
+            echo "🔄 ===== CHECKING POLICY: $policy ====="
+            echo "Policy directory: policies/$policy"
+            
+            # Check if directory exists
+            if [[ ! -d "policies/$policy" ]]; then
+              echo "❌ ERROR: Directory policies/$policy does not exist"
+              ls -la policies/ || echo "Failed to list policies directory"
+              continue
+            fi
+            
+            # Check go.mod
+            if [[ -f "policies/$policy/go.mod" ]]; then
+              echo "📄 Go.mod content:"
+              cat "policies/$policy/go.mod"
+              echo ""
+              GO_MOD_VERSION=$(grep '^go ' "policies/$policy/go.mod" | awk '{print $2}' || echo "unknown")
+              echo "📌 Go version in go.mod: $GO_MOD_VERSION"
+            else
+              echo "⚠️  No go.mod found in policies/$policy"
+            fi
+            echo ""
+            
+            # Change to policy directory
+            echo "📂 Changing to directory: policies/$policy"
+            cd "policies/$policy" || {
+              echo "❌ ERROR: Failed to cd to policies/$policy"
+              continue
+            }
+            
+            echo "📍 Current working directory: $(pwd)"
+            echo "📁 Directory contents:"
+            ls -la
+            echo ""
+            
+            # Run govulncheck with maximum verbosity
+            echo "🔍 Running govulncheck command:"
+            echo "govulncheck -db=\"\" -show verbose ./..."
+            echo ""
+            
+            echo "📊 GOVULNCHECK OUTPUT START:"
+            echo "----------------------------------------"
+            
+            # Capture both stdout and stderr, and exit code
+            set +e  # Don't exit on error
+            output=$(govulncheck -db="" -show verbose ./... 2>&1)
             exit_code=$?
+            set -e  # Re-enable exit on error
+            
+            echo "$output"
+            echo "----------------------------------------"
+            echo "📊 GOVULNCHECK OUTPUT END"
+            echo ""
+            echo "📈 Exit code: $exit_code"
+            echo "📈 Exit code meaning:"
+            case $exit_code in
+              0) echo "  0 = Success, no vulnerabilities found" ;;
+              1) echo "  1 = Error occurred during execution" ;;
+              3) echo "  3 = Vulnerabilities found in your code" ;;
+              *) echo "  $exit_code = Unknown exit code" ;;
+            esac
+            echo ""
+            
             if [[ $exit_code -eq 0 ]]; then
               echo "✅ govulncheck passed for policy: $policy"
             elif [[ $exit_code -eq 3 ]]; then
-              echo "❌ Vulnerabilities found in policy: $policy" >> errors.log
+              echo "❌ Vulnerabilities found in policy: $policy" | tee -a errors.log
+              echo "Policy: $policy" >> errors.log
+              echo "Exit code: $exit_code" >> errors.log
+              echo "Full output:" >> errors.log
               echo "$output" >> errors.log
+              echo "===========================================" >> errors.log
               echo "" >> errors.log
             else
-              echo "❌ govulncheck failed for policy: $policy" >> errors.log
+              echo "❌ govulncheck failed for policy: $policy (exit code: $exit_code)" | tee -a errors.log
+              echo "Policy: $policy" >> errors.log
+              echo "Exit code: $exit_code" >> errors.log
+              echo "Error output:" >> errors.log
               echo "$output" >> errors.log
+              echo "===========================================" >> errors.log
               echo "" >> errors.log
             fi
+            
+            # Go back to root directory
+            cd ../..
+            echo "📂 Returned to directory: $(pwd)"
+            echo ""
+            echo "🔄 ===== COMPLETED POLICY: $policy ====="
+            echo ""
+            
           done <<< "${{ steps.changed-policies.outputs.policies }}"
+          
+          echo "==============================================="
+          echo "🔍 VULNERABILITY CHECK COMPLETED"
+          echo "==============================================="
 
       # ------------------------------------------------------------
       # Build check
