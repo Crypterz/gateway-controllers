@@ -84,7 +84,9 @@ jobs:
                 echo true > $BUILD_FAILED_FILE
                 echo "### $policy" >> $SUMMARY_FILE
                 echo "- Build failed" >> $SUMMARY_FILE
-                sed 's/^/  /' build.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat build.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Build successful for $policy"
@@ -130,7 +132,9 @@ jobs:
                 echo "Formatting failed for $policy"
                 echo "### $policy" >> $SUMMARY_FILE
                 echo "- Formatting failed" >> $SUMMARY_FILE
-                sed 's/^/  /' goimports.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat goimports.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Formatting successful for $policy"
@@ -141,7 +145,9 @@ jobs:
                 echo "Static check failed for $policy"
                 if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
                 echo "- Static check failed" >> $SUMMARY_FILE
-                sed 's/^/  /' staticcheck.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat staticcheck.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Static check successful for $policy"
@@ -152,7 +158,9 @@ jobs:
                 echo "Vulnerability check failed for $policy"
                 if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
                 echo "- Vulnerability check failed" >> $SUMMARY_FILE
-                sed 's/^/  /' govulncheck.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat govulncheck.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Vulnerability check successful for $policy"
@@ -163,7 +171,9 @@ jobs:
                 echo "Gosec check failed for $policy"
                 if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
                 echo "- Gosec check failed" >> $SUMMARY_FILE
-                sed 's/^/  /' gosec.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat gosec.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Gosec check successful for $policy"
@@ -174,7 +184,9 @@ jobs:
                 echo "Tests failed for $policy"
                 if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
                 echo "- Tests failed" >> $SUMMARY_FILE
-                sed 's/^/  /' test.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat test.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Tests successful for $policy"
@@ -185,7 +197,9 @@ jobs:
                 echo "Tests with race failed for $policy"
                 if ! grep -q "### $policy" $SUMMARY_FILE; then echo "### $policy" >> $SUMMARY_FILE; fi
                 echo "- Tests with race failed" >> $SUMMARY_FILE
-                sed 's/^/  /' test_race.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
+                cat test_race.out >> $SUMMARY_FILE
+                echo '```' >> $SUMMARY_FILE
                 echo "" >> $SUMMARY_FILE
               else
                 echo "Tests with race successful for $policy"
