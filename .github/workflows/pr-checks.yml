@@ -105,10 +105,10 @@ jobs:
           echo "Checking Go formatting..."
           
           # Check if gofmt would make any changes
-          UNFORMATTED=$(find policies/ -name "*.go" -exec gofmt -l {} +)
+          UNFORMATTED=$(find policies/ -name "*.go" -exec gofmt -l {} + 2>&1)
           
           if [[ -n "$UNFORMATTED" ]]; then
-            echo "❌ The following files are not properly formatted:" >> errors.log
+            echo "❌ Formatting issues detected:" >> errors.log
             echo "$UNFORMATTED" >> errors.log
             echo "" >> errors.log
             echo "Run 'go fmt ./...' to fix formatting issues." >> errors.log
@@ -127,10 +127,10 @@ jobs:
           echo "Checking Go imports..."
           
           # Check if goimports would make any changes
-          UNFORMATTED=$(find policies/ -name "*.go" -exec goimports -l {} +)
+          UNFORMATTED=$(find policies/ -name "*.go" -exec goimports -l {} + 2>&1)
           
           if [[ -n "$UNFORMATTED" ]]; then
-            echo "❌ The following files have import issues:" >> errors.log
+            echo "❌ Import issues detected:" >> errors.log
             echo "$UNFORMATTED" >> errors.log
             echo "" >> errors.log
             echo "Run 'goimports -w .' to fix import issues." >> errors.log
