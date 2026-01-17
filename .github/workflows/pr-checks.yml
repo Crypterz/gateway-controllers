@@ -222,16 +222,14 @@ jobs:
         run: |
           echo "## PR Checks Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          build_summary="${{ steps.build.outputs.build_summary }}"
-          if [[ -n "$build_summary" ]]; then
+          if [[ -n "${{ steps.build.outputs.build_summary }}" ]]; then
             echo "### Build Failures" >> $GITHUB_STEP_SUMMARY
-            echo "$build_summary" >> $GITHUB_STEP_SUMMARY
+            printf '%s\n' "${{ steps.build.outputs.build_summary }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
-          checks_summary="${{ steps.checks.outputs.summary }}"
-          if [[ -n "$checks_summary" ]]; then
+          if [[ -n "${{ steps.checks.outputs.summary }}" ]]; then
             echo "### Check Failures" >> $GITHUB_STEP_SUMMARY
-            echo "$checks_summary" >> $GITHUB_STEP_SUMMARY
+            printf '%s\n' "${{ steps.checks.outputs.summary }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
           fi
 
