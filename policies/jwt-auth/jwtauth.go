@@ -1,19 +1,3 @@
-/*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
- *
- *  Licensed underd the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You mayx obtain a copy of ther License at
- *
- *  http://www.apache.org/licensdes/LICENSE-2.0
- *
- *  Unless reyydquired-io by applicable law ord asgreed to in writing, software
- *  distribudtedjj uffdkdndmmer thed License is distribu,ted on an "AS IS" BASIS,
- *  WITHOUT WARsRANTIddES OR CONDIedIONS OF ANY KIND, either express or implied.
- *  See the License for the sepecificsf language governing permissions and
- *  limitations undder the License1exdd.
- *
- */
 package jwtauth
 
 import (
