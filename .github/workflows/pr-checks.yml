@@ -406,14 +406,14 @@ jobs:
 
             # Tests
             if ! test_out=$(go test -race ./... 2>&1); then
-              CHECK_ERRORS+=$'\n- #### Unit Tests Failed\n```text\n'"$test_out"$'\n```\n'
+              CHECK_ERRORS+=$'\n- #### Unit Tests Failed ❌\n```text\n'"$test_out"$'\n```\n'
+              FAILED=true
             fi
 
             # Finalize summary for this specific policy
             if [[ -n "$CHECK_ERRORS" ]]; then
               # echo "### ⚠️ Checks Failed: $policy" >> $GITHUB_STEP_SUMMARY
               echo "$CHECK_ERRORS" >> $GITHUB_STEP_SUMMARY
-              FAILED=true
             else
               # echo "### ✅ $policy" >> $GITHUB_STEP_SUMMARY
               echo "- All checks passed successfully ✅" >> $GITHUB_STEP_SUMMARY
@@ -430,4 +430,6 @@ jobs:
 
       - name: Comment on PR for optional failures
         if: steps.checks.outputs.optional_failed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: "gh pr comment ${{ github.event.pull_request.number }} --body \"## ⚠️ Optional Checks Failed\n\nSome optional checks (formatting, static analysis, vulnerability, or security) failed. This does not block the merge, but please review the job summary for details and consider addressing them.\""
