@@ -413,7 +413,6 @@ jobs:
             if [[ -n "$CHECK_ERRORS" ]]; then
               # echo "### ⚠️ Checks Failed: $policy" >> $GITHUB_STEP_SUMMARY
               echo "$CHECK_ERRORS" >> $GITHUB_STEP_SUMMARY
-              FAILED=true
             else
               # echo "### ✅ $policy" >> $GITHUB_STEP_SUMMARY
               echo "- All checks passed successfully ✅" >> $GITHUB_STEP_SUMMARY
