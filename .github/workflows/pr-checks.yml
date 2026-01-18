@@ -333,6 +333,8 @@ jobs:
               echo '```' >> $GITHUB_STEP_SUMMARY
               FAILED=true
               continue # Skip further checks if build fails
+            else
+              echo "- #### Build Passed ✅" >> $GITHUB_STEP_SUMMARY
             fi
 
             # --- 2. LINT/TEST CHECKS ---
