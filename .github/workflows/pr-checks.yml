@@ -305,8 +305,8 @@ jobs:
       - name: Run Build and Checks
         if: steps.policies.outputs.has_changes == 'true'
         env:
-          ENABLE_GOVULNCHECK: false  # Set to true to enable vulnerability checks
-          ENABLE_GOSEC: false       # Set to true to enable security checks with gosec
+          ENABLE_GOVULNCHECK: true  # Set to true to enable vulnerability checks
+          ENABLE_GOSEC: true       # Set to true to enable security checks with gosec
           ENABLE_STATICCHECK: true  # Set to false to disable static analysis checks
         run: |
           FAILED=false
