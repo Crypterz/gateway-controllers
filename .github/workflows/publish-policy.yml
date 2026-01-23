@@ -118,6 +118,30 @@ jobs:
           echo "✅ Policy structure valid"
 
       # ------------------------------------------------------------
+      # Validate version consistency
+      # ------------------------------------------------------------
+      - name: Validate version consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DIR="${{ steps.meta.outputs.target_dir }}"
+          WORKFLOW_VERSION="${{ github.event.inputs.version }}"
+
+          # Extract version from policy-definition.yaml
+          POLICY_VERSION=$(grep '^version:' "$DIR/policy-definition.yaml" | awk '{print $2}' | sed 's/^v//')
+
+          [[ "$WORKFLOW_VERSION" == "$POLICY_VERSION" ]] || {
+            echo "❌ Version mismatch between workflow input and policy-definition.yaml"
+            echo "Workflow version: $WORKFLOW_VERSION"
+            echo "Policy definition version: $POLICY_VERSION"
+            echo "Please ensure the version in policy-definition.yaml matches the workflow input version"
+            exit 1
+          }
+
+          echo "✅ Version consistency validated"
+
+      # ------------------------------------------------------------
       # Run tests
       # ------------------------------------------------------------
       - name: Run policy tests
